@@ -12,6 +12,8 @@ import time
 from dotenv import load_dotenv
 import yaml
 from io import BytesIO
+from typing import Optional
+from utils import convert_to_str
 
 app = FastAPI()
 load_dotenv()
@@ -22,10 +24,11 @@ with open(config_path, "r") as file:
 
 @app.post("/")
 async def send_emails(
-    sender_email: str = Form(...),
-    sender_pass: str = Form(...),
-    photo_folder: str = Form(...),
-    photo_suffix: str = Form(...),
+    sender_email: str = Form(...,description="Senders email ID"),
+    sender_pass: str = Form(...,description="Senders Password"),
+    photo_folder: str = Form(...,description="Path to your folder containing the files"),
+    photo_suffix: Optional[str] = Form(...,description="default suffix to your file name"),
+    filetype : str = Form(...,description="Example: jpg, png, pdf etc."),
     file: UploadFile = File(...),
 ):
     if sender_email in config["email"]:
@@ -34,7 +37,7 @@ async def send_emails(
         if not sender_password:
             raise HTTPException(status_code=401, detail="Email password not found in environment variables")
     else:
-        raise HTTPException(status_code=401, detail="Email not found in config file")
+        sender_password = sender_pass
 
     successful = []
     failed = []
@@ -79,8 +82,9 @@ async def send_emails(
         for column in photo_columns:
             photo_id = row[column]
             if not pd.isna(photo_id):
-                numeric_photo_id = str(int(photo_id))
-                actual_photo_id = f"{photo_suffix}{numeric_photo_id}.jpg"
+                numeric_photo_id = convert_to_str(photo_id)
+                print(numeric_photo_id)
+                actual_photo_id = f"{photo_suffix}{numeric_photo_id}.{filetype}"
                 photo_file_path = os.path.join(photo_folder, actual_photo_id)
                 
                 if os.path.exists(photo_file_path):
@@ -96,10 +100,10 @@ async def send_emails(
             try:
                 session.sendmail(sender_email, email, msg.as_string())
                 successful.append([name, email] + attached_photos + [None] * (len(photo_columns) - len(attached_photos)))
-                print('Email successfully sent to {email} with attachments {attached_photos}')
+                print(f'Email successfully sent to {email} with attachments {attached_photos}')
             except Exception:
                 failed.append([name, email] + attached_photos + [None] * (len(photo_columns) - len(attached_photos)))
-                print('Failed to send mail to {email} with attachments {attached_photos}')
+                print(f'Failed to send mail to {email} with attachments {attached_photos}')
         else:
             failed.append([name, email] + [None] * len(photo_columns))
     
